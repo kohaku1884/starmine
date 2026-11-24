@@ -1,0 +1,777 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#02030a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>花火シミュレーター</title>
+<style>
+:root{--fg:#eef0ff;--mut:#9aa0c0;--acc:#ffb347;--line:rgba(255,255,255,.14);--panel:rgba(12,14,30,.94)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#02030a;color:var(--fg);
+  font-family:system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif;
+  overflow:hidden;overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none;user-select:none;touch-action:manipulation}
+button{font:inherit;color:inherit;cursor:pointer}
+#app{position:fixed;inset:0;height:100dvh;display:flex;flex-direction:column}
+#stage{position:relative;flex:1;min-height:0;touch-action:none}
+#stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+#city{pointer-events:none}
+#hint{position:absolute;left:0;right:0;top:14px;text-align:center;font-size:13px;color:rgba(255,255,255,.7);
+  pointer-events:none;transition:opacity .8s;text-shadow:0 1px 6px #000}
+#toast{position:absolute;left:50%;top:48px;transform:translateX(-50%);background:rgba(0,0,0,.75);border:1px solid var(--line);
+  padding:8px 14px;border-radius:20px;font-size:13px;opacity:0;pointer-events:none;transition:opacity .25s;white-space:nowrap}
+#toast.on{opacity:1}
+#panel{background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.tabs{display:flex;align-items:stretch}
+.tabs button{flex:1;background:none;border:0;border-bottom:2px solid transparent;padding:11px 0 9px;font-size:14px;color:var(--mut)}
+.tabs button.on{color:var(--fg);border-bottom-color:var(--acc)}
+.tabs .fold{flex:0 0 48px;font-size:16px}
+#body{max-height:27dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:10px 12px 4px}
+#panel.fold #body{display:none}
+.pane{display:none}.pane.on{display:block}
+.tools{display:flex;gap:8px;margin-bottom:8px;align-items:center}
+.tools button{background:rgba(255,255,255,.07);border:1px solid var(--line);border-radius:14px;padding:5px 12px;font-size:12px}
+.tools .cnt{margin-left:auto;font-size:12px;color:var(--mut)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px;padding-bottom:8px}
+.chip{position:relative;display:flex;flex-direction:column;justify-content:center;gap:1px;min-height:46px;text-align:left;
+  background:rgba(255,255,255,.05);border:1.5px solid var(--line);border-radius:12px;padding:6px 10px 6px 12px;opacity:.55;transition:.15s}
+.chip b{font-size:14px;font-weight:600;display:flex;align-items:center;gap:7px}
+.chip small{font-size:10.5px;color:var(--mut);line-height:1.25}
+.chip .dot{width:14px;height:14px;border-radius:50%;flex:none;box-shadow:0 0 8px currentColor}
+.chip[aria-pressed=true]{opacity:1;background:rgba(255,255,255,.1);border-color:var(--c,var(--acc));box-shadow:0 0 10px -2px var(--c,var(--acc)),inset 0 0 12px -6px var(--c,var(--acc))}
+.chip[aria-pressed=true]::after{content:"✓";position:absolute;right:8px;top:5px;font-size:11px;color:var(--c,var(--acc))}
+.sec{font-size:11px;color:var(--mut);margin:4px 2px 6px;letter-spacing:.04em}
+.row{display:flex;align-items:center;gap:10px;margin:0 0 14px;font-size:13px}
+.row label{flex:0 0 108px}
+.row output{flex:0 0 48px;text-align:right;color:var(--mut);font-size:12px}
+.row input[type=range]{flex:1;accent-color:var(--acc);height:28px}
+.seg{display:flex;flex:1;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{flex:1;background:none;border:0;padding:8px 4px;font-size:12px;color:var(--mut)}
+.seg button.on{background:rgba(255,179,71,.18);color:var(--fg)}
+.note{font-size:11px;color:var(--mut);line-height:1.5;margin:0 2px 10px}
+.bar{display:flex;gap:8px;align-items:center;padding:8px 12px 10px}
+.step{display:flex;align-items:center;border:1px solid var(--line);border-radius:14px;background:rgba(255,255,255,.06)}
+.step button{width:42px;height:46px;background:none;border:0;font-size:20px}
+.step span{min-width:30px;text-align:center;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+#fire{flex:1;height:48px;border:0;border-radius:24px;font-size:16px;font-weight:800;letter-spacing:.06em;color:#2a1300;
+  background:linear-gradient(135deg,#ffd36a,#ff8a3d);box-shadow:0 2px 14px rgba(255,140,60,.45)}
+#fire:active{transform:scale(.97)}
+#auto{height:48px;padding:0 14px;border-radius:24px;border:1.5px solid var(--line);background:rgba(255,255,255,.06);font-size:13px}
+#auto[aria-pressed=true]{border-color:var(--acc);background:rgba(255,179,71,.2);color:#fff}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="sky"></canvas>
+    <canvas id="city"></canvas>
+    <div id="hint">夜空をタップするとその場所に打ち上がります</div>
+    <div id="toast"></div>
+  </div>
+  <div id="panel">
+    <div class="tabs" id="tabs">
+      <button data-t="colors" class="on">色</button>
+      <button data-t="types">種類</button>
+      <button data-t="sounds">音</button>
+      <button data-t="opts">設定</button>
+      <button class="fold" id="fold" aria-label="パネルを開閉">▾</button>
+    </div>
+    <div id="body">
+      <section class="pane on" id="p-colors"></section>
+      <section class="pane" id="p-types"></section>
+      <section class="pane" id="p-sounds"></section>
+      <section class="pane" id="p-opts"></section>
+    </div>
+    <div class="bar">
+      <div class="step"><button id="minus" aria-label="減らす">−</button><span id="cnt">3</span><button id="plus" aria-label="増やす">＋</button></div>
+      <button id="fire">打ち上げ</button>
+      <button id="auto" aria-pressed="false">自動連発</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================
+   データ定義
+   ============================================================ */
+const COLORS = [
+  {id:"red",   n:"紅",     s:"ストロンチウム", c:"#ff3b30"},
+  {id:"crim",  n:"深紅",   s:"リチウム",       c:"#d6123f"},
+  {id:"orange",n:"橙",     s:"カルシウム",     c:"#ff8c1a"},
+  {id:"yellow",n:"黄",     s:"ナトリウム",     c:"#ffe03d"},
+  {id:"gold",  n:"金",     s:"鉄・チタン・炭", c:"#ffc24d"},
+  {id:"green", n:"緑",     s:"バリウム",       c:"#3ddc6e"},
+  {id:"teal",  n:"青緑",   s:"バリウム+銅",    c:"#36e6d4"},
+  {id:"blue",  n:"青",     s:"銅",             c:"#3b82ff"},
+  {id:"purple",n:"紫",     s:"ストロンチウム+銅", c:"#b061ff"},
+  {id:"pink",  n:"桃",     s:"ストロンチウム+Mg", c:"#ff7eb6"},
+  {id:"white", n:"白・銀", s:"マグネシウム・アルミ", c:"#eef4ff"},
+];
+const TYPES = [
+  {id:"peony",  n:"牡丹",   s:"ぼたん／真ん丸に咲く王道"},
+  {id:"chrys",  n:"菊",     s:"きく／光の尾を引いて開く"},
+  {id:"willow", n:"柳",     s:"やなぎ／枝垂れる長い尾"},
+  {id:"kamuro", n:"冠",     s:"かむろ／きらめく金の雨"},
+  {id:"change", n:"変化菊", s:"へんかぎく／途中で色が変わる"},
+  {id:"double", n:"芯入り", s:"しんいり／二重の円"},
+  {id:"ring",   n:"輪物",   s:"わもの／傾いた輪が開く"},
+  {id:"saturn", n:"土星",   s:"どせい／輪のある玉"},
+  {id:"heart",  n:"ハート", s:"型物／ハート形"},
+  {id:"star",   n:"星",     s:"型物／五芒星"},
+  {id:"palm",   n:"ヤシ",   s:"やし／太い光の放射"},
+  {id:"cross",  n:"十字",   s:"クロセット／途中で4つに割れる"},
+  {id:"bee",    n:"蜂",     s:"はち／飛び回って弾ける"},
+  {id:"senrin", n:"千輪",   s:"せんりん／小さな花が咲き乱れる"},
+];
+const SOUNDS = [
+  {id:"hiss",  g:"launch", n:"ヒュー",   s:"打ち上げの笛音"},
+  {id:"boom",  g:"burst",  n:"ドーン",   s:"腹に響く重低音"},
+  {id:"crack", g:"burst",  n:"パァン",   s:"鋭い炸裂音"},
+  {id:"pop",   g:"burst",  n:"ポン",     s:"軽い小玉の音"},
+  {id:"crackle",g:"tail",  n:"パチパチ", s:"余韻の弾ける音"},
+  {id:"whistle",g:"tail",  n:"ピュルル", s:"鳴り物（笛）"},
+];
+const SOUND_GROUPS = [
+  ["launch","打ち上げ時（選んだものすべて）"],
+  ["burst","開花の音（選んだ中からランダムに1つ）"],
+  ["tail","余韻（選んだものすべて）"],
+];
+
+/* ============================================================
+   状態 / 保存
+   ============================================================ */
+const S = {
+  colors:new Set(["red","gold","green","blue","white"]),
+  types:new Set(["peony","chrys","willow","ring","heart"]),
+  sounds:new Set(["hiss","boom","crackle"]),
+  count:3, size:1, vol:.8, gap:.25, autoInt:2.5, mix:"random", auto:false,
+};
+const KEY="hanabi-sim-v1";
+try{
+  const j=JSON.parse(localStorage.getItem(KEY)||"null");
+  if(j){
+    for(const k of ["colors","types","sounds"]) if(Array.isArray(j[k])) S[k]=new Set(j[k]);
+    for(const k of ["count","size","vol","gap","autoInt","mix"]) if(j[k]!==undefined) S[k]=j[k];
+  }
+}catch(e){}
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify({
+    colors:[...S.colors],types:[...S.types],sounds:[...S.sounds],
+    count:S.count,size:S.size,vol:S.vol,gap:S.gap,autoInt:S.autoInt,mix:S.mix}));}catch(e){}
+}
+
+/* ============================================================
+   ユーティリティ
+   ============================================================ */
+const TAU=Math.PI*2;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const pick=a=>a[(Math.random()*a.length)|0];
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const $=s=>document.querySelector(s);
+
+/* ============================================================
+   サウンド（WebAudio で全て合成）
+   ============================================================ */
+const Snd={
+  ctx:null,master:null,dry:null,wet:null,noise:null,voices:0,
+  init(){
+    if(this.ctx) return;
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC) return;
+    const c=this.ctx=new AC();
+    const comp=c.createDynamicsCompressor();
+    comp.threshold.value=-14; comp.ratio.value=6;
+    this.master=c.createGain(); this.master.gain.value=S.vol;
+    this.master.connect(comp); comp.connect(c.destination);
+    // 簡易リバーブ（減衰ノイズのインパルス）
+    const len=c.sampleRate*2.4, ir=c.createBuffer(2,len,c.sampleRate);
+    for(let ch=0;ch<2;ch++){const d=ir.getChannelData(ch);
+      for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3.2);}
+    const conv=c.createConvolver(); conv.buffer=ir;
+    this.wet=c.createGain(); this.wet.gain.value=.32;
+    conv.connect(this.wet); this.wet.connect(this.master);
+    this.conv=conv;
+    // ホワイトノイズ
+    const nb=c.createBuffer(1,c.sampleRate*2,c.sampleRate), nd=nb.getChannelData(0);
+    for(let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
+    this.noise=nb;
+  },
+  resume(){
+    this.init();
+    if(this.ctx&&this.ctx.state!=="running") this.ctx.resume().catch(()=>{});
+  },
+  setVol(v){ if(this.master) this.master.gain.value=v; },
+  /* 出力ノード（パン付き、リバーブへ送る） */
+  out(pan,send=.5){
+    const c=this.ctx, g=c.createGain();
+    let tail=g;
+    if(c.createStereoPanner){const p=c.createStereoPanner(); p.pan.value=clamp(pan,-1,1); g.connect(p); tail=p;}
+    tail.connect(this.master);
+    const s=c.createGain(); s.gain.value=send; tail.connect(s); s.connect(this.conv);
+    return g;
+  },
+  env(g,t,a,peak,dec){
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(peak,t+a);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+a+dec);
+  },
+  osc(type,f0,f1,t,dur,dest){
+    const o=this.ctx.createOscillator(); o.type=type;
+    o.frequency.setValueAtTime(f0,t); o.frequency.exponentialRampToValueAtTime(Math.max(1,f1),t+dur);
+    o.connect(dest); o.start(t); o.stop(t+dur+.05); return o;
+  },
+  nz(t,dur,type,f,q,dest,f1){
+    const c=this.ctx, s=c.createBufferSource(); s.buffer=this.noise;
+    s.loop=true;
+    const fl=c.createBiquadFilter(); fl.type=type; fl.frequency.setValueAtTime(f,t); fl.Q.value=q;
+    if(f1) fl.frequency.exponentialRampToValueAtTime(f1,t+dur);
+    s.connect(fl); fl.connect(dest);
+    s.start(t,Math.random()*1.5); s.stop(t+dur+.05); return s;
+  },
+  /* ---- 個々の音 ---- */
+  hiss(t,dur,pan){
+    const o=this.out(pan,.25); this.env(o,t,.15,.16,dur);
+    this.osc("triangle",420,2100,t,dur,o);
+    const n=this.ctx.createGain(); n.gain.value=.55; n.connect(o);
+    this.nz(t,dur,"bandpass",1200,2,n,4200);
+  },
+  boom(t,pan,big){
+    const o=this.out(pan,.8);
+    const g1=this.ctx.createGain(); g1.connect(o); this.env(g1,t,.012,.95*big,1.5);
+    this.osc("sine",150,34,t,.9,g1);
+    const g2=this.ctx.createGain(); g2.connect(o); this.env(g2,t,.01,.8*big,.9);
+    this.nz(t,1,"lowpass",520,.7,g2,90);
+    const g3=this.ctx.createGain(); g3.connect(o); this.env(g3,t,.004,.3*big,.16);
+    this.nz(t,.2,"highpass",1800,.7,g3);
+  },
+  crack(t,pan,big){
+    const o=this.out(pan,.7);
+    const g=this.ctx.createGain(); g.connect(o); this.env(g,t,.003,.85*big,.32);
+    this.nz(t,.4,"highpass",1500,.6,g);
+    const g2=this.ctx.createGain(); g2.connect(o); this.env(g2,t,.003,.5*big,.2);
+    this.osc("square",1100,140,t,.18,g2);
+    const g3=this.ctx.createGain(); g3.connect(o); this.env(g3,t,.01,.55*big,.7);
+    this.osc("sine",110,45,t,.5,g3);
+  },
+  pop(t,pan,big){
+    const o=this.out(pan,.5);
+    const g=this.ctx.createGain(); g.connect(o); this.env(g,t,.004,.7*big,.22);
+    this.osc("sine",460,70,t,.16,g);
+    const g2=this.ctx.createGain(); g2.connect(o); this.env(g2,t,.002,.35*big,.07);
+    this.nz(t,.1,"bandpass",2500,1,g2);
+  },
+  crackle(t,pan,big){
+    const n=(18+Math.random()*26)|0;
+    for(let i=0;i<n;i++){
+      const tt=t+.1+Math.pow(Math.random(),1.4)*1.7;
+      const o=this.out(pan+rnd(-.35,.35),.4);
+      this.env(o,tt,.001,rnd(.07,.26)*big,rnd(.015,.05));
+      this.nz(tt,.08,"highpass",rnd(2500,5500),.7,o);
+    }
+  },
+  whistle(t,pan,big){
+    const dur=rnd(.9,1.5), o=this.out(pan,.5);
+    this.env(o,t+.1,.05,.085*big,dur);
+    const f0=rnd(2300,3300);
+    const osc=this.osc("sine",f0,f0*.62,t+.1,dur,o);
+    const lfo=this.ctx.createOscillator(), lg=this.ctx.createGain();
+    lfo.frequency.value=rnd(22,34); lg.gain.value=170;
+    lfo.connect(lg); lg.connect(osc.frequency); lfo.start(t+.1); lfo.stop(t+dur+.2);
+  },
+  /* ---- 外部から呼ぶ ---- */
+  launch(dur,pan){
+    if(!this.ctx||S.vol<=0||!S.sounds.has("hiss")||this.voices>40) return;
+    this.hiss(this.ctx.currentTime+.01,dur,pan);
+  },
+  burst(delay,pan,big){
+    if(!this.ctx||S.vol<=0) return;
+    const t=this.ctx.currentTime+delay;
+    const bursts=SOUNDS.filter(s=>s.g==="burst"&&S.sounds.has(s.id));
+    if(bursts.length && this.voices<45){ this[pick(bursts).id](t,pan,big); }
+    if(S.sounds.has("crackle")&&this.voices<30) this.crackle(t+.15,pan,big);
+    if(S.sounds.has("whistle")&&this.voices<30) this.whistle(t+.05,pan,big);
+    this.voices++; setTimeout(()=>this.voices--,1800);
+  },
+  preview(id){
+    this.resume(); if(!this.ctx) return;
+    const t=this.ctx.currentTime+.02;
+    if(id==="hiss") this.hiss(t,1.1,0);
+    else if(id==="crackle") this.crackle(t,0,1);
+    else this[id](t,0,.9);
+  },
+};
+
+/* ============================================================
+   描画系の準備
+   ============================================================ */
+const stage=$("#stage"), sky=$("#sky"), city=$("#city");
+const fx=sky.getContext("2d",{alpha:false}), cx=city.getContext("2d");
+let W=0,H=0,DPR=1,skyGrad=null;
+
+function resize(){
+  const r=stage.getBoundingClientRect();
+  W=Math.max(1,r.width); H=Math.max(1,r.height);
+  DPR=Math.min(window.devicePixelRatio||1,2);
+  for(const c of [sky,city]){c.width=Math.round(W*DPR);c.height=Math.round(H*DPR);}
+  fx.setTransform(DPR,0,0,DPR,0,0); cx.setTransform(DPR,0,0,DPR,0,0);
+  skyGrad=fx.createLinearGradient(0,0,0,H);
+  skyGrad.addColorStop(0,"#01020a"); skyGrad.addColorStop(.7,"#050a22"); skyGrad.addColorStop(1,"#0d1233");
+  fx.globalAlpha=1; fx.fillStyle=skyGrad; fx.fillRect(0,0,W,H);
+  drawCity();
+}
+function drawCity(){
+  cx.clearRect(0,0,W,H);
+  // 星
+  let seed=7; const r=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  for(let i=0;i<Math.round(W*H/2600);i++){
+    cx.fillStyle=`rgba(255,255,255,${.15+r()*.55})`;
+    const s=r()<.1?1.4:.8; cx.fillRect(r()*W,r()*H*.75,s,s);
+  }
+  // 地平線の街明かり
+  const hg=cx.createLinearGradient(0,H*.82,0,H);
+  hg.addColorStop(0,"rgba(255,150,70,0)"); hg.addColorStop(1,"rgba(255,150,70,.16)");
+  cx.fillStyle=hg; cx.fillRect(0,H*.82,W,H*.18);
+  // 遠景の山
+  cx.fillStyle="#070a1c"; cx.beginPath(); cx.moveTo(0,H);
+  for(let x=0;x<=W+20;x+=20) cx.lineTo(x,H*.9-Math.sin(x/W*5.2+1)*H*.03-Math.sin(x/W*13)*H*.012);
+  cx.lineTo(W,H); cx.fill();
+  // ビル群
+  cx.fillStyle="#03040a";
+  const base=H, maxh=Math.min(H*.12,70);
+  let x=-5;
+  while(x<W){
+    const bw=rnd(14,38)*(W>600?1.5:1), bh=rnd(.25,1)*maxh;
+    cx.fillRect(x,base-bh,bw,bh);
+    cx.fillStyle="rgba(255,214,120,.55)";
+    for(let wy=base-bh+5;wy<base-4;wy+=7)
+      for(let wx=x+3;wx<x+bw-3;wx+=6)
+        if(r()<.16) cx.fillRect(wx,wy,2,2.5);
+    cx.fillStyle="#03040a";
+    x+=bw+rnd(0,3);
+  }
+}
+
+/* 光る粒のスプライト（色ごとにキャッシュ） */
+const sprites=new Map();
+function sprite(hex){
+  let s=sprites.get(hex); if(s) return s;
+  s=document.createElement("canvas"); s.width=s.height=64;
+  const g=s.getContext("2d"), r=parseInt(hex.slice(1,3),16),gg=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  const gr=g.createRadialGradient(32,32,0,32,32,32);
+  gr.addColorStop(0,"rgba(255,255,255,1)");
+  gr.addColorStop(.14,`rgba(${(r+255)>>1},${(gg+255)>>1},${(b+255)>>1},.95)`);
+  gr.addColorStop(.38,`rgba(${r},${gg},${b},.55)`);
+  gr.addColorStop(1,`rgba(${r},${gg},${b},0)`);
+  g.fillStyle=gr; g.fillRect(0,0,64,64);
+  sprites.set(hex,s); return s;
+}
+
+/* ============================================================
+   花火エンジン
+   ============================================================ */
+const parts=[], flashes=[], shells=[], events=[];
+let Q=1;                        // 画質係数（FPSに応じて自動調整）
+const MAXP=()=>Math.round(3200*Q);
+
+function mk(x,y,vx,vy,o){
+  const p={x,y,vx,vy,dr:.965,g:.025,age:0,life:80,sz:2.3,tl:0,h:null,c:"#fff",c2:null,ch:.5,
+    fl:0,tw:0,buzz:0,split:0,seed:Math.random()};
+  Object.assign(p,o);
+  if(p.tl) p.h=[];
+  parts.push(p); return p;
+}
+function sphereVec(){
+  let a,b,c,l;
+  do{a=rnd(-1,1);b=rnd(-1,1);c=rnd(-1,1);l=a*a+b*b+c*c;}while(l>1||l<.01);
+  l=Math.sqrt(l); return [a/l,b/l];
+}
+const N=n=>Math.max(6,Math.round(n*Q));
+
+/* 色の決め方：shell = {pal, c1, c2} */
+function makeShell(){
+  const sel=COLORS.filter(c=>S.colors.has(c.id)).map(c=>c.c);
+  let pal;
+  if(S.mix==="all"||sel.length===1) pal=sel.slice();
+  else{
+    const a=pick(sel); pal=[a];
+    if(sel.length>1&&Math.random()<.35){let b=pick(sel);if(b!==a)pal.push(b);}
+  }
+  const c1=pick(pal);
+  let others=sel.filter(c=>c!==c1);
+  const c2=others.length?pick(others):"#ffffff";
+  return {pal,c1,c2,pc:()=>pick(pal)};
+}
+
+/* 各種類の生成 ---------------------------------------------- */
+const BURST={
+  peony(x,y,R,sh){
+    const dr=.965,v0=R*(1-dr);
+    for(let i=0,n=N(120);i<n;i++){const [a,b]=sphereVec(),s=v0*rnd(.9,1);
+      mk(x,y,a*s,b*s,{dr,g:.022,life:rnd(62,84),sz:2.5,c:sh.pc()});}
+  },
+  chrys(x,y,R,sh){
+    const dr=.968,v0=R*(1-dr);
+    for(let i=0,n=N(100);i<n;i++){const [a,b]=sphereVec(),s=v0*rnd(.88,1);
+      mk(x,y,a*s,b*s,{dr,g:.026,life:rnd(85,110),sz:2,tl:8,tw:1,fl:.25,c:sh.pc()});}
+  },
+  willow(x,y,R,sh){
+    const dr=.955,v0=R*(1-dr)*.85;
+    for(let i=0,n=N(80);i<n;i++){const [a,b]=sphereVec(),s=v0*rnd(.8,1);
+      mk(x,y,a*s,b*s,{dr,g:.05,life:rnd(130,165),sz:2,tl:18,fl:.2,c:sh.pc()});}
+  },
+  kamuro(x,y,R,sh){
+    const dr=.958,v0=R*(1-dr)*.95;
+    for(let i=0,n=N(115);i<n;i++){const [a,b]=sphereVec(),s=v0*rnd(.75,1);
+      mk(x,y,a*s,b*s,{dr,g:.04,life:rnd(160,200),sz:2.2,tl:14,tw:1,fl:.5,c:sh.pc()});}
+  },
+  change(x,y,R,sh){
+    const dr=.968,v0=R*(1-dr);
+    for(let i=0,n=N(100);i<n;i++){const [a,b]=sphereVec(),s=v0*rnd(.9,1);
+      mk(x,y,a*s,b*s,{dr,g:.022,life:rnd(100,120),sz:2.4,tl:5,c:sh.c1,c2:sh.c2,ch:.45});}
+  },
+  double(x,y,R,sh){
+    const dr=.965,v0=R*(1-dr);
+    for(let i=0,n=N(85);i<n;i++){const [a,b]=sphereVec(),s=v0*rnd(.92,1);
+      mk(x,y,a*s,b*s,{dr,g:.02,life:rnd(65,80),sz:2.4,c:sh.c1});}
+    for(let i=0,n=N(46);i<n;i++){const [a,b]=sphereVec(),s=v0*.46*rnd(.9,1);
+      mk(x,y,a*s,b*s,{dr,g:.02,life:rnd(55,68),sz:2.6,c:sh.c2});}
+  },
+  ring(x,y,R,sh){
+    const dr=.965,v0=R*(1-dr),sq=Math.cos(rnd(.15,1.15)),rot=rnd(0,Math.PI);
+    ringOf(x,y,N(60),v0,sq,rot,{dr,g:.014,life:rnd(72,88),sz:2.8},sh.pc);
+  },
+  saturn(x,y,R,sh){
+    const dr=.965,v0=R*(1-dr);
+    for(let i=0,n=N(40);i<n;i++){const [a,b]=sphereVec(),s=v0*.42*rnd(.9,1);
+      mk(x,y,a*s,b*s,{dr,g:.016,life:rnd(68,80),sz:2.8,c:sh.c2});}
+    ringOf(x,y,N(76),v0*1.12,.26,rnd(-.45,.45),{dr,g:.016,life:rnd(72,84),sz:2.5},()=>sh.c1);
+  },
+  heart(x,y,R,sh){
+    const dr=.965,k=R*(1-dr)/17*1.12,rot=rnd(-.18,.18),cr=Math.cos(rot),sr=Math.sin(rot),c=sh.pc();
+    for(let i=0,n=N(72);i<n;i++){const t=i/n*TAU;
+      const hx=16*Math.pow(Math.sin(t),3);
+      const hy=-(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t));
+      mk(x,y,(hx*cr-hy*sr)*k,(hx*sr+hy*cr)*k,{dr,g:.009,life:rnd(80,92),sz:2.7,c});}
+  },
+  star(x,y,R,sh){
+    const dr=.965,v0=R*(1-dr)*1.08,rot=rnd(0,TAU),c=sh.pc();
+    const V=[];for(let i=0;i<10;i++){const a=rot+i/10*TAU,r=i%2?.42:1;V.push([Math.cos(a)*r,Math.sin(a)*r]);}
+    const per=N(8);
+    for(let i=0;i<10;i++){const A=V[i],B=V[(i+1)%10];
+      for(let j=0;j<per;j++){const f=j/per;
+        mk(x,y,(A[0]+(B[0]-A[0])*f)*v0,(A[1]+(B[1]-A[1])*f)*v0,{dr,g:.009,life:rnd(80,92),sz:2.7,c});}}
+  },
+  palm(x,y,R,sh){
+    const dr=.962,v0=R*(1-dr),arms=(rnd(7,10))|0,rot=rnd(0,TAU);
+    for(let a=0;a<arms;a++){const ang=rot+a/arms*TAU+rnd(-.05,.05),ca=Math.cos(ang),sa=Math.sin(ang),c=sh.pc();
+      for(let i=0,n=N(10);i<n;i++){const s=v0*(.6+.4*i/n)*rnd(.97,1.03);
+        mk(x,y,ca*s,sa*s,{dr,g:.05,life:rnd(100,125),sz:3,tl:13,tw:1,c});}}
+  },
+  cross(x,y,R,sh){
+    const dr=.962,v0=R*(1-dr)*.62;
+    for(let i=0,n=N(16);i<n;i++){const [a,b]=sphereVec(),s=v0*rnd(.9,1),c=sh.pc();
+      mk(x,y,a*s,b*s,{dr,g:.01,life:60,sz:2.8,tl:5,c,split:rnd(26,32)});}
+  },
+  bee(x,y,R,sh){
+    const dr=.955,v0=R*(1-dr)*.55;
+    for(let i=0,n=N(44);i<n;i++){const [a,b]=sphereVec(),s=v0*rnd(.5,1);
+      mk(x,y,a*s,b*s,{dr,g:.012,life:rnd(75,110),sz:2.3,tl:6,buzz:1.1,fl:.15,c:sh.pc()});}
+  },
+  senrin(x,y,R,sh){
+    const m=9;
+    for(let i=0;i<m;i++){
+      const a=rnd(0,TAU),d=Math.sqrt(Math.random())*R*.72,px=x+Math.cos(a)*d,py=y+Math.sin(a)*d*.9;
+      const c=sh.pc(), mr=R*rnd(.22,.3);
+      later(rnd(0,520),()=>{
+        const dr=.96,v0=mr*(1-dr);
+        flash(px,py,mr*1.6,c,.5);
+        for(let k=0,n=N(30);k<n;k++){const [u,v]=sphereVec(),s=v0*rnd(.85,1);
+          mk(px,py,u*s,v*s,{dr,g:.02,life:rnd(40,56),sz:2.1,c});}
+      });
+    }
+  },
+};
+function ringOf(x,y,n,v0,sq,rot,o,colf){
+  const cr=Math.cos(rot),sr=Math.sin(rot),c0=colf();
+  for(let i=0;i<n;i++){const a=i/n*TAU,u=Math.cos(a),v=Math.sin(a)*sq;
+    mk(x,y,(u*cr-v*sr)*v0,(u*sr+v*cr)*v0,{...o,c:colf===undefined?c0:colf()});}
+}
+
+function later(ms,fn){events.push({t:performance.now()+ms,fn});}
+function flash(x,y,r,c,a=.35){flashes.push({x,y,r,c,a,age:0});}
+
+/* 打ち上げ ---------------------------------------------------- */
+function launchShell(tx,ty,delayMs=0){
+  const sh=makeShell();
+  const type=pick(TYPES.filter(t=>S.types.has(t.id))).id;
+  later(delayMs,()=>{
+    const x0=clamp(tx+rnd(-30,30),10,W-10), y0=H-rnd(0,8);
+    const dist=y0-ty, dur=clamp(650+dist/H*1100,700,1900);
+    shells.push({x0,y0,x1:tx,y1:ty,t0:performance.now(),dur,type,sh,last:0});
+    Snd.launch(dur/1000,(x0/W)*2-1);
+  });
+}
+function explode(s){
+  const R=Math.min(W*.32,H*.34)*S.size*(s.type==="palm"||s.type==="kamuro"?1.05:1)*rnd(.92,1.08);
+  flash(s.x1,s.y1,R*1.5,s.sh.c1,.16);
+  BURST[s.type](s.x1,s.y1,R,s.sh);
+  const big=clamp(.55+R/180,.5,1.1);
+  Snd.burst(.08+(1-s.y1/H)*.3,(s.x1/W)*2-1,big);
+}
+
+/* 更新・描画 ------------------------------------------------- */
+function stepParticle(p,dt){
+  p.age+=dt;
+  if(p.age>=p.life){ endOf(p); return false; }
+  if(p.tl){const h=p.h;h.push(p.x,p.y);if(h.length>p.tl*2)h.splice(0,2);}
+  const d=Math.pow(p.dr,dt);
+  p.vx*=d; p.vy*=d; p.vy+=p.g*dt;
+  if(p.buzz){p.vx+=(Math.random()-.5)*p.buzz*dt;p.vy+=(Math.random()-.5)*p.buzz*dt;}
+  p.x+=p.vx*dt; p.y+=p.vy*dt;
+  if(p.split&&p.age>p.split){
+    const a0=rnd(0,TAU),sp=2.4;
+    for(let k=0;k<4;k++){const a=a0+k*Math.PI/2;
+      mk(p.x,p.y,Math.cos(a)*sp+p.vx*.3,Math.sin(a)*sp+p.vy*.3,{dr:.95,g:.03,life:rnd(34,46),sz:2.2,tl:5,tw:1,c:p.c});}
+    flash(p.x,p.y,18,p.c,.25);
+    return false;
+  }
+  return true;
+}
+function endOf(p){
+  if(p.tw&&parts.length<MAXP()){
+    for(let k=0;k<3;k++) mk(p.x,p.y,rnd(-.7,.7),rnd(-.7,.7),{dr:.92,g:.03,life:rnd(12,24),sz:1.4,c:Math.random()<.5?"#ffffff":p.c,fl:.4});
+  }
+}
+function drawParticle(p){
+  const t=p.age/p.life;
+  let a=t<.65?1:Math.max(0,1-(t-.65)/.35);
+  if(p.fl&&t>.55&&Math.random()<p.fl) a*=.25;
+  const c=(p.c2&&t>p.ch)?p.c2:p.c;
+  if(p.tl&&p.h.length>=4){
+    const h=p.h,n=h.length;
+    fx.lineCap="round"; fx.strokeStyle=c; fx.lineWidth=p.sz*.55;
+    fx.globalAlpha=a*.3;
+    fx.beginPath(); fx.moveTo(h[0],h[1]);
+    for(let i=2;i<n;i+=2) fx.lineTo(h[i],h[i+1]);
+    fx.lineTo(p.x,p.y); fx.stroke();
+    const s=(n>>2)<<1;
+    fx.globalAlpha=a*.7; fx.lineWidth=p.sz*.8;
+    fx.beginPath(); fx.moveTo(h[n-s],h[n-s+1]);
+    for(let i=n-s+2;i<n;i+=2) fx.lineTo(h[i],h[i+1]);
+    fx.lineTo(p.x,p.y); fx.stroke();
+  }
+  const sz=p.sz*(t>.8?1-(t-.8)*2.2:1)*2.5;
+  if(sz>.5){fx.globalAlpha=a; fx.drawImage(sprite(c),p.x-sz,p.y-sz,sz*2,sz*2);}
+}
+
+let last=performance.now(), ema=16.7, qTimer=0;
+function frame(now){
+  const el=Math.min(100,now-last); last=now;
+  const dt=clamp(el/16.667,.2,3);
+  ema=ema*.95+el*.05; qTimer+=el;
+  if(qTimer>1000){qTimer=0;
+    if(ema>25&&Q>.45) Q-=.08; else if(ema<18&&Q<1) Q=Math.min(1,Q+.03);}
+
+  // 予約イベント
+  for(let i=events.length-1;i>=0;i--) if(events[i].t<=now){const e=events.splice(i,1)[0];e.fn();}
+
+  // 夜空（残像を残して塗り直す）
+  fx.globalCompositeOperation="source-over";
+  fx.globalAlpha=1-Math.pow(.78,dt); fx.fillStyle=skyGrad; fx.fillRect(0,0,W,H);
+  fx.globalCompositeOperation="lighter";
+
+  // 閃光
+  for(let i=flashes.length-1;i>=0;i--){const f=flashes[i];f.age+=dt;
+    const k=f.age/14; if(k>=1){flashes.splice(i,1);continue;}
+    fx.globalAlpha=f.a*(1-k)*(1-k); const r=f.r*(.5+k*.7);
+    fx.drawImage(sprite(f.c),f.x-r,f.y-r,r*2,r*2);}
+
+  // 打ち上げ中の玉
+  for(let i=shells.length-1;i>=0;i--){const s=shells[i];
+    const p=(now-s.t0)/s.dur;
+    if(p>=1){shells.splice(i,1);explode(s);continue;}
+    const e=1-Math.pow(1-p,2.2);
+    s.x=s.x0+(s.x1-s.x0)*p+Math.sin(p*18)*2*(1-p); s.y=s.y0+(s.y1-s.y0)*e;
+    if(parts.length<MAXP())
+      mk(s.x,s.y,rnd(-.3,.3),rnd(.3,1.1),{dr:.93,g:.04,life:rnd(16,28),sz:1.7,c:Math.random()<.6?"#ffb347":"#ffe9b0"});
+    fx.globalAlpha=1; const r=8; fx.drawImage(sprite("#ffd9a0"),s.x-r,s.y-r,r*2,r*2);
+  }
+
+  // 粒子
+  let w=0;
+  for(let i=0;i<parts.length;i++){const p=parts[i];
+    if(stepParticle(p,dt)){drawParticle(p);parts[w++]=p;}}
+  parts.length=w;
+  // 上限超過分は古い順に間引かない（寿命で自然消滅）
+  fx.globalAlpha=1; fx.globalCompositeOperation="source-over";
+  requestAnimationFrame(frame);
+}
+
+/* ============================================================
+   発射の窓口
+   ============================================================ */
+function ready(){
+  if(!S.colors.size){toast("色を1つ以上選んでください");setTab("colors");return false;}
+  if(!S.types.size){toast("花火の種類を1つ以上選んでください");setTab("types");return false;}
+  return true;
+}
+function salvo(n){
+  if(!ready()) return;
+  Snd.resume();
+  // 横位置を重ならないよう層別にシャッフル
+  const slots=[...Array(n).keys()].sort(()=>Math.random()-.5);
+  let t=0;
+  for(let i=0;i<n;i++){
+    const fx_=n===1?rnd(.15,.85):(slots[i]+rnd(.1,.9))/n;
+    launchShell(clamp(fx_*W,18,W-18),H*rnd(.14,.52),t);
+    t+=S.gap*1000*rnd(.5,1.5);
+  }
+  hideHint();
+}
+function tapLaunch(x,y){
+  if(!ready()) return;
+  Snd.resume();
+  launchShell(clamp(x,18,W-18),clamp(y,H*.06,H*.8),0);
+  hideHint();
+}
+let hinted=false;
+function hideHint(){ if(hinted) return; hinted=true; $("#hint").style.opacity=0; }
+let toastT=0;
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("on");clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove("on"),1800);}
+
+stage.addEventListener("pointerdown",e=>{
+  const r=stage.getBoundingClientRect();
+  tapLaunch(e.clientX-r.left,e.clientY-r.top);
+});
+
+/* 自動連発 */
+let autoT=0, wake=null;
+async function setAuto(on){
+  S.auto=on; $("#auto").setAttribute("aria-pressed",on);
+  $("#auto").textContent=on?"■ 停止":"自動連発";
+  clearTimeout(autoT);
+  if(on){
+    if(!ready()){S.auto=false;$("#auto").setAttribute("aria-pressed",false);$("#auto").textContent="自動連発";return;}
+    const tick=()=>{ if(!S.auto) return; if(!document.hidden) salvo(S.count); autoT=setTimeout(tick,S.autoInt*1000); };
+    tick();
+    try{ if(navigator.wakeLock) wake=await navigator.wakeLock.request("screen"); }catch(e){}
+  }else{ try{wake&&wake.release();}catch(e){} wake=null; }
+}
+
+/* ============================================================
+   UI
+   ============================================================ */
+function chipGrid(items,set,mk){
+  const g=document.createElement("div"); g.className="grid";
+  for(const it of items){
+    const b=document.createElement("button"); b.className="chip"; b.type="button";
+    b.innerHTML=mk(it); b.setAttribute("aria-pressed",set.has(it.id));
+    if(it.c) b.style.setProperty("--c",it.c);
+    b.onclick=()=>{
+      set.has(it.id)?set.delete(it.id):set.add(it.id);
+      b.setAttribute("aria-pressed",set.has(it.id)); counts(); save();
+      if(set===S.sounds&&set.has(it.id)) Snd.preview(it.id);
+    };
+    b.dataset.id=it.id; g.appendChild(b);
+  }
+  return g;
+}
+function tools(items,set,pane){
+  const d=document.createElement("div"); d.className="tools";
+  const all=document.createElement("button"); all.textContent="すべて";
+  const none=document.createElement("button"); none.textContent="解除";
+  const rn=document.createElement("button"); rn.textContent="ランダム";
+  const cnt=document.createElement("span"); cnt.className="cnt";
+  const sync=()=>{pane.querySelectorAll(".chip").forEach(b=>b.setAttribute("aria-pressed",set.has(b.dataset.id)));counts();save();};
+  all.onclick=()=>{items.forEach(i=>set.add(i.id));sync();};
+  none.onclick=()=>{set.clear();sync();};
+  rn.onclick=()=>{set.clear();items.forEach(i=>Math.random()<.4&&set.add(i.id));if(!set.size)set.add(pick(items).id);sync();};
+  d.append(all,none,rn,cnt); d.cnt=cnt; return d;
+}
+const cntEls={};
+function counts(){
+  cntEls.colors.textContent=`${S.colors.size} / ${COLORS.length} 選択中`;
+  cntEls.types.textContent=`${S.types.size} / ${TYPES.length} 選択中`;
+  cntEls.sounds.textContent=S.sounds.size?`${S.sounds.size} / ${SOUNDS.length} 選択中`:"無音";
+}
+function build(){
+  const pc=$("#p-colors"), pt=$("#p-types"), ps=$("#p-sounds"), po=$("#p-opts");
+  let tl=tools(COLORS,S.colors,pc); pc.append(tl,chipGrid(COLORS,S.colors,c=>
+    `<b><i class="dot" style="background:${c.c};color:${c.c}"></i>${c.n}</b><small>${c.s}</small>`));
+  cntEls.colors=tl.cnt;
+  tl=tools(TYPES,S.types,pt); pt.append(tl,chipGrid(TYPES,S.types,t=>`<b>${t.n}</b><small>${t.s}</small>`));
+  cntEls.types=tl.cnt;
+  tl=tools(SOUNDS,S.sounds,ps); ps.append(tl); cntEls.sounds=tl.cnt;
+  for(const [g,label] of SOUND_GROUPS){
+    const h=document.createElement("div"); h.className="sec"; h.textContent=label; ps.append(h);
+    ps.append(chipGrid(SOUNDS.filter(s=>s.g===g),S.sounds,s=>`<b>${s.n}</b><small>${s.s}</small>`));
+  }
+  const nt=document.createElement("p"); nt.className="note";
+  nt.textContent="タップで音を試聴できます。iPhoneはマナーモード（消音スイッチ）だと鳴りません。";
+  ps.append(nt);
+
+  // 設定
+  const slider=(label,min,max,step,key,fmt,onch)=>{
+    const r=document.createElement("div"); r.className="row";
+    r.innerHTML=`<label>${label}</label><input type="range" min="${min}" max="${max}" step="${step}"><output></output>`;
+    const i=r.querySelector("input"), o=r.querySelector("output");
+    i.value=S[key]; o.textContent=fmt(S[key]);
+    i.oninput=()=>{S[key]=+i.value;o.textContent=fmt(S[key]);onch&&onch();save();};
+    return r;
+  };
+  po.append(
+    slider("音量",0,1,.05,"vol",v=>Math.round(v*100)+"%",()=>{Snd.setVol(S.vol);}),
+    slider("花火の大きさ",.6,1.5,.05,"size",v=>"×"+v.toFixed(2)),
+    slider("連続の間隔",0,1.2,.05,"gap",v=>v?v.toFixed(2)+"秒":"同時"),
+    slider("自動連発の間隔",.5,8,.5,"autoInt",v=>v+"秒"),
+  );
+  const mr=document.createElement("div"); mr.className="row";
+  mr.innerHTML=`<label>配色</label><div class="seg"><button data-m="random">1玉ごとにランダム</button><button data-m="all">選んだ色を全部混ぜる</button></div>`;
+  const segSync=()=>mr.querySelectorAll("button").forEach(b=>b.classList.toggle("on",b.dataset.m===S.mix));
+  mr.querySelectorAll("button").forEach(b=>b.onclick=()=>{S.mix=b.dataset.m;segSync();save();});
+  segSync(); po.append(mr);
+  const n2=document.createElement("p"); n2.className="note";
+  n2.textContent="下の数字は1回に打ち上げる発数。「打ち上げ」で選んだ色・種類・音の組み合わせからランダムに打ち上がり、画面タップなら指した場所で開きます。";
+  po.append(n2);
+  counts();
+}
+function setTab(t){
+  document.querySelectorAll("#tabs button[data-t]").forEach(b=>b.classList.toggle("on",b.dataset.t===t));
+  document.querySelectorAll(".pane").forEach(p=>p.classList.toggle("on",p.id==="p-"+t));
+  $("#panel").classList.remove("fold"); $("#fold").textContent="▾";
+  setTimeout(resize,0);
+}
+document.querySelectorAll("#tabs button[data-t]").forEach(b=>b.onclick=()=>{
+  const same=b.classList.contains("on")&&!$("#panel").classList.contains("fold");
+  if(same){$("#panel").classList.add("fold");$("#fold").textContent="▴";b.classList.remove("on");}
+  else setTab(b.dataset.t);
+});
+$("#fold").onclick=()=>{
+  const p=$("#panel"), f=p.classList.toggle("fold");
+  $("#fold").textContent=f?"▴":"▾";
+  if(!f&&!document.querySelector("#tabs button.on")) setTab("colors");
+};
+function setCount(n){S.count=clamp(n,1,50);$("#cnt").textContent=S.count;save();}
+$("#minus").onclick=()=>setCount(S.count-(S.count>10?5:1));
+$("#plus").onclick=()=>setCount(S.count+(S.count>=10?5:1));
+$("#fire").onclick=()=>salvo(S.count);
+$("#auto").onclick=()=>{Snd.resume();setAuto(!S.auto);};
+
+/* 起動 */
+build(); setCount(S.count);
+new ResizeObserver(()=>resize()).observe(stage);
+window.addEventListener("orientationchange",()=>setTimeout(resize,200));
+document.addEventListener("visibilitychange",()=>{last=performance.now();});
+// 音声は最初のユーザー操作で解禁
+["pointerdown","touchend","click"].forEach(ev=>window.addEventListener(ev,()=>Snd.resume(),{once:false,passive:true}));
+resize();
+requestAnimationFrame(t=>{last=t;frame(t);});
+// 最初の一発（デモ）
+setTimeout(()=>{ if(!hinted&&S.colors.size&&S.types.size) launchShell(W*.5,H*.32,0); },700);
+</script>
+</body>
+</html>

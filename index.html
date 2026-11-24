@@ -202,8 +202,13 @@ const Snd={
         for(let i=0;i<n&&s0+i<len;i++){z+=.2*((Math.random()*2-1)-z); d[s0+i]+=z*Math.pow(1-i/n,2)*(1.8-e);}
       }
     }
-    const conv=c.createConvolver(); conv.buffer=ir;
-    this.wet=c.createGain(); this.wet.gain.value=.42;
+    // 自動正規化に頼らず、インパルス応答のエネルギーを一定にそろえる
+    for(let ch=0;ch<2;ch++){
+      const d=ir.getChannelData(ch); let e=0; for(let i=0;i<len;i++) e+=d[i]*d[i];
+      const k=.55/Math.sqrt(e); for(let i=0;i<len;i++) d[i]*=k;
+    }
+    const conv=c.createConvolver(); conv.normalize=false; conv.buffer=ir;
+    this.wet=c.createGain(); this.wet.gain.value=.9;
     conv.connect(this.wet); this.wet.connect(this.master);
     this.conv=conv;
     const nb=c.createBuffer(1,sr*2,sr), nd=nb.getChannelData(0);
@@ -282,8 +287,8 @@ const Snd={
     const env=c.createGain(); env.connect(lp);
     const t1=t+.12;
     env.gain.setValueAtTime(.0001,t1);
-    env.gain.exponentialRampToValueAtTime(.09,t1+.2);
-    env.gain.linearRampToValueAtTime(.12,t+dur*.8);
+    env.gain.exponentialRampToValueAtTime(.22,t1+.2);
+    env.gain.linearRampToValueAtTime(.3,t+dur*.8);
     env.gain.linearRampToValueAtTime(.0001,t+dur+.08);
     const am=c.createGain(); am.gain.value=.5; am.connect(env);
     const lfo=c.createOscillator(), lg=c.createGain();
@@ -342,7 +347,7 @@ const Snd={
   // ピュルル：開花後に鳴る笛（短め）
   whistle(t,pan,big){
     const c=this.ctx, dur=rnd(.8,1.3), o=this.out(pan,.5);
-    this.env(o,t+.1,.05,.035*big,dur);
+    this.env(o,t+.1,.05,.2*big,dur);
     const f0=rnd(2400,3400), t1=t+.1;
     const am=c.createGain(); am.gain.value=.5; am.connect(o);
     const lfo=c.createOscillator(), lg=c.createGain(); lfo.type="triangle";

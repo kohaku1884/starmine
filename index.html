@@ -128,15 +128,15 @@ const TYPES = [
   {id:"senrin", n:"千輪",   s:"せんりん／小さな花が咲き乱れる"},
 ];
 const SOUNDS = [
-  {id:"hiss",  g:"launch", n:"ヒュー",   s:"打ち上げの笛音"},
+  {id:"hiss",  g:"launch", n:"笛花火",   s:"上昇中のヒュルルルという笛"},
   {id:"boom",  g:"burst",  n:"ドーン",   s:"腹に響く重低音"},
   {id:"crack", g:"burst",  n:"パァン",   s:"鋭い炸裂音"},
   {id:"pop",   g:"burst",  n:"ポン",     s:"軽い小玉の音"},
   {id:"crackle",g:"tail",  n:"パチパチ", s:"余韻の弾ける音"},
-  {id:"whistle",g:"tail",  n:"ピュルル", s:"鳴り物（笛）"},
+  {id:"whistle",g:"tail",  n:"ピュルル", s:"開花後に鳴る笛（鳴り物）"},
 ];
 const SOUND_GROUPS = [
-  ["launch","打ち上げ時（選んだものすべて）"],
+  ["launch","笛花火（打ち上げ中に鳴る・タップでON/OFF）"],
   ["burst","開花の音（選んだ中からランダムに1つ）"],
   ["tail","余韻（選んだものすべて）"],
 ];
@@ -209,7 +209,7 @@ const Snd={
   out(pan,send=.5){
     const c=this.ctx, g=c.createGain();
     let tail=g;
-    if(c.createStereoPanner){const p=c.createStereoPanner(); p.pan.value=clamp(pan,-1,1); g.connect(p); tail=p;}
+    if(c.createStereoPanner){const p=c.createStereoPanner(); p.pan.value=clamp(pan,-1,1); g.connect(p); tail=p; g.panner=p;}
     tail.connect(this.master);
     const s=c.createGain(); s.gain.value=send; tail.connect(s); s.connect(this.conv);
     return g;
@@ -233,11 +233,40 @@ const Snd={
     s.start(t,Math.random()*1.5); s.stop(t+dur+.05); return s;
   },
   /* ---- 個々の音 ---- */
-  hiss(t,dur,pan){
-    const o=this.out(pan,.25); this.env(o,t,.15,.16,dur);
-    this.osc("triangle",420,2100,t,dur,o);
-    const n=this.ctx.createGain(); n.gain.value=.55; n.connect(o);
-    this.nz(t,dur,"bandpass",1200,2,n,4200);
+  /* 笛花火：打ち上げ中に鳴る。脈動する高音＋息のノイズが上昇し、左右に移動する */
+  rise(t,dur,pan0,pan1){
+    const c=this.ctx, o=this.out(pan0,.3);
+    if(o.panner) o.panner.pan.linearRampToValueAtTime(clamp(pan1,-1,1),t+dur);
+    // 筒から出る「ポン」（発射の衝撃）
+    const th=c.createGain(); th.connect(this.out(pan0,.4)); this.env(th,t,.005,.5,.28);
+    this.osc("sine",120,40,t,.22,th);
+    // 上昇につれて明るくなる
+    const lp=c.createBiquadFilter(); lp.type="lowpass"; lp.Q.value=.7;
+    lp.frequency.setValueAtTime(3200,t); lp.frequency.linearRampToValueAtTime(8000,t+dur);
+    lp.connect(o);
+    const env=c.createGain(); env.connect(lp);
+    const t1=t+.12;
+    env.gain.setValueAtTime(.0001,t1);
+    env.gain.exponentialRampToValueAtTime(.2,t1+.2);
+    env.gain.linearRampToValueAtTime(.27,t+dur*.8);
+    env.gain.linearRampToValueAtTime(.0001,t+dur+.08);
+    // 笛薬が燃えるときの細かい脈動（ルルル…）
+    const am=c.createGain(); am.gain.value=.55; am.connect(env);
+    const lfo=c.createOscillator(), lg=c.createGain();
+    lfo.frequency.setValueAtTime(rnd(26,38),t); lfo.frequency.linearRampToValueAtTime(rnd(40,62),t+dur);
+    lg.gain.value=.45; lfo.connect(lg); lg.connect(am.gain); lfo.start(t); lfo.stop(t+dur+.2);
+    // 音程：上昇しつつ少しゆらぐ
+    const f0=rnd(1700,2400), f1=f0*rnd(1.5,1.9);
+    const vib=c.createOscillator(), vg=c.createGain();
+    vib.frequency.value=rnd(4,7); vg.gain.value=f0*.014; vib.connect(vg); vib.start(t); vib.stop(t+dur+.2);
+    for(const [ratio,gain] of [[1,.6],[1.011,.4],[2,.2],[3,.07]]){
+      const g=c.createGain(); g.gain.value=gain; g.connect(am);
+      const os=this.osc("sine",f0*ratio,f1*ratio,t1,dur-.12,g);
+      vg.connect(os.frequency);
+    }
+    // 息づかい（音程に追従する帯域ノイズ）
+    const ng=c.createGain(); ng.gain.value=.4; ng.connect(am);
+    this.nz(t1,dur-.12,"bandpass",f0,9,ng,f1);
   },
   boom(t,pan,big){
     const o=this.out(pan,.8);
@@ -283,9 +312,9 @@ const Snd={
     lfo.connect(lg); lg.connect(osc.frequency); lfo.start(t+.1); lfo.stop(t+dur+.2);
   },
   /* ---- 外部から呼ぶ ---- */
-  launch(dur,pan){
+  launch(dur,pan0,pan1){
     if(!this.ctx||S.vol<=0||!S.sounds.has("hiss")||this.voices>40) return;
-    this.hiss(this.ctx.currentTime+.01,dur,pan);
+    this.rise(this.ctx.currentTime+.01,dur,pan0,pan1);
   },
   burst(delay,pan,big){
     if(!this.ctx||S.vol<=0) return;
@@ -299,7 +328,7 @@ const Snd={
   preview(id){
     this.resume(); if(!this.ctx) return;
     const t=this.ctx.currentTime+.02;
-    if(id==="hiss") this.hiss(t,1.1,0);
+    if(id==="hiss") this.rise(t,1.7,-.6,.6);
     else if(id==="crackle") this.crackle(t,0,1);
     else this[id](t,0,.9);
   },
@@ -512,7 +541,7 @@ function launchShell(tx,ty,delayMs=0){
     const x0=clamp(tx+rnd(-30,30),10,W-10), y0=H-rnd(0,8);
     const dist=y0-ty, dur=clamp(650+dist/H*1100,700,1900);
     shells.push({x0,y0,x1:tx,y1:ty,t0:performance.now(),dur,type,sh,last:0});
-    Snd.launch(dur/1000,(x0/W)*2-1);
+    Snd.launch(dur/1000,(x0/W)*2-1,(tx/W)*2-1);
   });
 }
 function explode(s){
@@ -595,7 +624,7 @@ function frame(now){
     const p=(now-s.t0)/s.dur;
     if(p>=1){shells.splice(i,1);explode(s);continue;}
     const e=1-Math.pow(1-p,2.2);
-    s.x=s.x0+(s.x1-s.x0)*p+Math.sin(p*18)*2*(1-p); s.y=s.y0+(s.y1-s.y0)*e;
+    s.x=s.x0+(s.x1-s.x0)*p+Math.sin(p*18)*(S.sounds.has("hiss")?4:2)*(1-p); s.y=s.y0+(s.y1-s.y0)*e;
     if(parts.length<MAXP())
       mk(s.x,s.y,rnd(-.3,.3),rnd(.3,1.1),{dr:.93,g:.04,life:rnd(16,28),sz:1.7,c:Math.random()<.6?"#ffb347":"#ffe9b0"});
     fx.globalAlpha=1; const r=8; fx.drawImage(sprite("#ffd9a0"),s.x-r,s.y-r,r*2,r*2);
